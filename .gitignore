@@ -1,0 +1,39 @@
+# ===== Go build artifacts =====
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Project binary
+/auth-service
+
+# ===== Coverage & profiling =====
+*.coverprofile
+coverage.out
+cover.out
+cpu.prof
+mem.prof
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== Environment / local config =====
+.env
+.env.*
+!.env.example
+
+# ===== Temporary / cache =====
+tmp/
+temp/
+.cache/
+
+# ===== IDE / OS files =====
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
