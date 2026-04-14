@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"auth-service/internal/core/config"
 	"auth-service/internal/core/database"
@@ -11,6 +12,8 @@ import (
 	"auth-service/internal/modules/auth/repository"
 	"auth-service/internal/modules/auth/service"
 )
+
+const authCookieName = "access_token"
 
 func DomainMiddleware(cfg *config.Config) muxMiddleware {
 	return func(next http.Handler) http.Handler {
@@ -95,6 +98,13 @@ func PermissionMiddleware(dbManager *database.Manager, jwtService *jwtx.Service,
 }
 
 func bearerToken(r *http.Request) string {
+	if cookie, err := r.Cookie(authCookieName); err == nil {
+		val := strings.TrimSpace(cookie.Value)
+		if val != "" {
+			return val
+		}
+	}
+
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader == "" {
 		return ""
@@ -104,4 +114,36 @@ func bearerToken(r *http.Request) string {
 		return ""
 	}
 	return parts[1]
+}
+
+func setAuthCookie(w http.ResponseWriter, r *http.Request, token string, expiresAt time.Time) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     authCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   requestIsHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		Expires:  expiresAt,
+	})
+}
+
+func clearAuthCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     authCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   requestIsHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+	})
+}
+
+func requestIsHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
 }

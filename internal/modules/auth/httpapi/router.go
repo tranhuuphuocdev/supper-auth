@@ -7,6 +7,7 @@ import (
 	"auth-service/internal/core/config"
 	"auth-service/internal/core/database"
 	"auth-service/internal/core/jwtx"
+
 	"github.com/gorilla/mux"
 )
 
@@ -15,8 +16,6 @@ type muxMiddleware = mux.MiddlewareFunc
 func RegisterRoutes(router *mux.Router, dbManager *database.Manager, cfg *config.Config) {
 	jwtService := jwtx.New(cfg.JWTSecret, 24*time.Hour)
 	handler := NewHandler(dbManager, jwtService)
-
-	router.Use(DomainMiddleware(cfg))
 
 	router.HandleFunc("/health", handler.Health).Methods("GET")
 

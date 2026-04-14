@@ -13,7 +13,7 @@ type Service struct {
 }
 
 type Claims struct {
-	UserID      uint     `json:"user_id"`
+	UserID      string   `json:"user_id"`
 	Email       string   `json:"email"`
 	Permissions []string `json:"permissions"`
 	Roles       []string `json:"roles"`
@@ -25,7 +25,7 @@ func New(secret string, expiresIn time.Duration) *Service {
 	return &Service{secret: []byte(secret), expiresIn: expiresIn}
 }
 
-func (s *Service) Generate(userID uint, email, domain string, permissions, roles []string) (string, time.Time, error) {
+func (s *Service) Generate(userID, email, domain string, permissions, roles []string) (string, time.Time, error) {
 	expiresAt := time.Now().Add(s.expiresIn)
 	claims := Claims{
 		UserID:      userID,
@@ -36,7 +36,7 @@ func (s *Service) Generate(userID uint, email, domain string, permissions, roles
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Subject:   fmt.Sprintf("%d", userID),
+			Subject:   userID,
 		},
 	}
 

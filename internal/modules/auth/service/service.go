@@ -3,12 +3,12 @@ package service
 import (
 	"errors"
 	"strings"
-	"time"
 
 	"auth-service/internal/core/database"
 	"auth-service/internal/core/jwtx"
 	"auth-service/internal/modules/auth/model"
 	"auth-service/internal/modules/auth/repository"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -22,28 +22,49 @@ func New(repo *repository.Repository, jwtService *jwtx.Service) *Service {
 }
 
 func (s *Service) Register(req model.RegisterRequest) (*database.User, error) {
-	if strings.TrimSpace(req.Email) == "" || strings.TrimSpace(req.Password) == "" {
-		return nil, errors.New("email and password are required")
+	username := strings.ToLower(strings.TrimSpace(req.Username))
+	if username == "" || strings.TrimSpace(req.Password) == "" {
+		return nil, errors.New("username and password are required")
 	}
 	if len(req.Password) < 6 {
 		return nil, errors.New("password must be at least 6 characters")
 	}
+	if _, err := s.repo.FindUserByUsername(username); err == nil {
+		return nil, errors.New("username already registered")
+	}
 
-	if _, err := s.repo.FindUserByEmail(req.Email); err == nil {
-		return nil, errors.New("email already registered")
+	normalizedEmail := normalizedOptional(req.Email, true)
+	if normalizedEmail != nil {
+		if _, err := s.repo.FindUserByEmail(*normalizedEmail); err == nil {
+			return nil, errors.New("email already registered")
+		}
 	}
 
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
+	provider := strings.ToLower(strings.TrimSpace(req.AuthProvider))
+	if provider == "" {
+		provider = "local"
+	}
+
+	googleSub := normalizedOptional(req.GoogleSub, false)
+	if provider == "google" && googleSub == nil {
+		return nil, errors.New("google_sub is required for google auth provider")
+	}
 
 	user := &database.User{
-		Email:     strings.ToLower(strings.TrimSpace(req.Email)),
-		Password:  string(hashed),
-		FirstName: strings.TrimSpace(req.FirstName),
-		LastName:  strings.TrimSpace(req.LastName),
-		IsActive:  true,
+		Username:     username,
+		Email:        normalizedEmail,
+		Password:     string(hashed),
+		DisplayName:  normalizedOptional(req.DisplayName, false),
+		AvatarURL:    normalizedOptional(req.AvatarURL, false),
+		AuthProvider: provider,
+		GoogleSub:    googleSub,
+		TelegramChat: normalizedOptional(req.TelegramChat, false),
+		Role:         "user",
+		IsDeleted:    false,
 	}
 	if err := s.repo.CreateUser(user); err != nil {
 		return nil, err
@@ -59,17 +80,25 @@ func (s *Service) Register(req model.RegisterRequest) (*database.User, error) {
 }
 
 func (s *Service) Login(domain string, req model.LoginRequest) (*model.LoginResponse, error) {
-	user, err := s.repo.FindUserByEmail(strings.ToLower(strings.TrimSpace(req.Email)))
-	if err != nil {
-		return nil, errors.New("invalid email or password")
+	identifier := strings.TrimSpace(req.Identifier)
+	if identifier == "" || strings.TrimSpace(req.Password) == "" {
+		return nil, errors.New("identifier and password are required")
 	}
 
-	if !user.IsActive {
-		return nil, errors.New("user account is inactive")
+	user, err := s.repo.FindUserByIdentifier(identifier)
+	if err != nil {
+		return nil, errors.New("invalid identifier or password")
+	}
+
+	if user.IsDeleted {
+		return nil, errors.New("user account is deleted")
+	}
+	if user.AuthProvider != "local" {
+		return nil, errors.New("password login is not enabled for this account")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
-		return nil, errors.New("invalid email or password")
+		return nil, errors.New("invalid identifier or password")
 	}
 
 	roles, err := s.repo.UserRoles(user.ID)
@@ -81,7 +110,11 @@ func (s *Service) Login(domain string, req model.LoginRequest) (*model.LoginResp
 		return nil, err
 	}
 
-	token, expiresAt, err := s.jwt.Generate(user.ID, user.Email, domain, permissions, roles)
+	email := ""
+	if user.Email != nil {
+		email = *user.Email
+	}
+	token, expiresAt, err := s.jwt.Generate(user.ID, email, domain, permissions, roles)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +123,7 @@ func (s *Service) Login(domain string, req model.LoginRequest) (*model.LoginResp
 	return &model.LoginResponse{Token: token, User: user, ExpiresAt: expiresAt}, nil
 }
 
-func (s *Service) ChangePassword(userID uint, oldPassword, newPassword string) error {
+func (s *Service) ChangePassword(userID string, oldPassword, newPassword string) error {
 	if len(strings.TrimSpace(newPassword)) < 6 {
 		return errors.New("new password must be at least 6 characters")
 	}
@@ -109,11 +142,10 @@ func (s *Service) ChangePassword(userID uint, oldPassword, newPassword string) e
 		return err
 	}
 	user.Password = string(hashed)
-	user.UpdatedAt = time.Now()
 	return s.repo.UpdateUser(user)
 }
 
-func (s *Service) Me(userID uint) (map[string]interface{}, error) {
+func (s *Service) Me(userID string) (map[string]interface{}, error) {
 	user, err := s.repo.FindUserByID(userID)
 	if err != nil {
 		return nil, errors.New("user not found")
@@ -141,7 +173,7 @@ func (s *Service) ListUsers() ([]database.User, error) {
 	return users, nil
 }
 
-func (s *Service) GetUser(userID uint) (map[string]interface{}, error) {
+func (s *Service) GetUser(userID string) (map[string]interface{}, error) {
 	user, err := s.repo.FindUserByID(userID)
 	if err != nil {
 		return nil, errors.New("user not found")
@@ -151,29 +183,56 @@ func (s *Service) GetUser(userID uint) (map[string]interface{}, error) {
 	return map[string]interface{}{"user": user, "roles": roles}, nil
 }
 
-func (s *Service) UpdateUser(userID uint, req model.UpdateUserRequest) error {
+func (s *Service) UpdateUser(userID string, req model.UpdateUserRequest) error {
 	user, err := s.repo.FindUserByID(userID)
 	if err != nil {
 		return errors.New("user not found")
 	}
-	user.FirstName = strings.TrimSpace(req.FirstName)
-	user.LastName = strings.TrimSpace(req.LastName)
-	user.IsActive = req.IsActive
+
+	if req.DisplayName != nil {
+		user.DisplayName = normalizedOptional(req.DisplayName, false)
+	}
+	if req.AvatarURL != nil {
+		user.AvatarURL = normalizedOptional(req.AvatarURL, false)
+	}
+	if req.Email != nil {
+		normalized := normalizedOptional(req.Email, true)
+		if normalized != nil {
+			existing, err := s.repo.FindUserByEmail(*normalized)
+			if err == nil && existing.ID != user.ID {
+				return errors.New("email already registered")
+			}
+		}
+		user.Email = normalized
+	}
+	if req.TelegramChat != nil {
+		user.TelegramChat = normalizedOptional(req.TelegramChat, false)
+	}
+	if req.Role != nil {
+		role := strings.TrimSpace(strings.ToLower(*req.Role))
+		if role != "" {
+			user.Role = role
+		}
+	}
+	if req.IsDeleted != nil {
+		user.IsDeleted = *req.IsDeleted
+	}
+
 	return s.repo.UpdateUser(user)
 }
 
-func (s *Service) DeleteUser(userID uint) error {
+func (s *Service) DeleteUser(userID string) error {
 	return s.repo.DeleteUser(userID)
 }
 
-func (s *Service) AssignRole(userID, roleID uint) error {
+func (s *Service) AssignRole(userID string, roleID uint) error {
 	if _, err := s.repo.FindRoleByID(roleID); err != nil {
 		return errors.New("role not found")
 	}
 	return s.repo.AssignRole(userID, roleID)
 }
 
-func (s *Service) RemoveRole(userID, roleID uint) error {
+func (s *Service) RemoveRole(userID string, roleID uint) error {
 	return s.repo.RemoveRole(userID, roleID)
 }
 
@@ -196,6 +255,20 @@ func (s *Service) ListPermissions() ([]database.Permission, error) {
 	return s.repo.ListPermissions()
 }
 
-func (s *Service) HasPermission(userID uint, permission string) (bool, error) {
+func (s *Service) HasPermission(userID string, permission string) (bool, error) {
 	return s.repo.HasPermission(userID, permission)
+}
+
+func normalizedOptional(v *string, toLower bool) *string {
+	if v == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*v)
+	if trimmed == "" {
+		return nil
+	}
+	if toLower {
+		trimmed = strings.ToLower(trimmed)
+	}
+	return &trimmed
 }

@@ -2,8 +2,10 @@ package repository
 
 import (
 	"errors"
+	"strings"
 
 	"auth-service/internal/core/database"
+
 	"gorm.io/gorm"
 )
 
@@ -21,15 +23,36 @@ func (r *Repository) CreateUser(user *database.User) error {
 
 func (r *Repository) FindUserByEmail(email string) (*database.User, error) {
 	var user database.User
-	if err := r.db.Where("email = ?", email).First(&user).Error; err != nil {
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	if err := r.db.Where("LOWER(email) = ? AND is_deleted = ?", normalized, false).First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil
 }
 
-func (r *Repository) FindUserByID(userID uint) (*database.User, error) {
+func (r *Repository) FindUserByUsername(username string) (*database.User, error) {
 	var user database.User
-	if err := r.db.First(&user, userID).Error; err != nil {
+	normalized := strings.ToLower(strings.TrimSpace(username))
+	if err := r.db.Where("LOWER(username) = ? AND is_deleted = ?", normalized, false).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *Repository) FindUserByIdentifier(identifier string) (*database.User, error) {
+	var user database.User
+	normalized := strings.ToLower(strings.TrimSpace(identifier))
+	if err := r.db.
+		Where("(LOWER(username) = ? OR LOWER(email) = ?) AND is_deleted = ?", normalized, normalized, false).
+		First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *Repository) FindUserByID(userID string) (*database.User, error) {
+	var user database.User
+	if err := r.db.Where("u_id = ? AND is_deleted = ?", userID, false).First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil
@@ -39,13 +62,13 @@ func (r *Repository) UpdateUser(user *database.User) error {
 	return r.db.Save(user).Error
 }
 
-func (r *Repository) DeleteUser(userID uint) error {
-	return r.db.Delete(&database.User{}, userID).Error
+func (r *Repository) DeleteUser(userID string) error {
+	return r.db.Model(&database.User{}).Where("u_id = ?", userID).Update("is_deleted", true).Error
 }
 
 func (r *Repository) ListUsers() ([]database.User, error) {
 	var users []database.User
-	if err := r.db.Find(&users).Error; err != nil {
+	if err := r.db.Where("is_deleted = ?", false).Find(&users).Error; err != nil {
 		return nil, err
 	}
 	return users, nil
@@ -87,16 +110,16 @@ func (r *Repository) FindRoleByID(roleID uint) (*database.Role, error) {
 	return &role, nil
 }
 
-func (r *Repository) AssignRole(userID, roleID uint) error {
+func (r *Repository) AssignRole(userID string, roleID uint) error {
 	link := database.UserRole{UserID: userID, RoleID: roleID}
 	return r.db.Where(link).FirstOrCreate(&link).Error
 }
 
-func (r *Repository) RemoveRole(userID, roleID uint) error {
+func (r *Repository) RemoveRole(userID string, roleID uint) error {
 	return r.db.Where("user_id = ? AND role_id = ?", userID, roleID).Delete(&database.UserRole{}).Error
 }
 
-func (r *Repository) UserRoles(userID uint) ([]string, error) {
+func (r *Repository) UserRoles(userID string) ([]string, error) {
 	var roles []string
 	err := r.db.Table("roles").
 		Select("roles.name").
@@ -106,7 +129,7 @@ func (r *Repository) UserRoles(userID uint) ([]string, error) {
 	return roles, err
 }
 
-func (r *Repository) UserPermissions(userID uint) ([]string, error) {
+func (r *Repository) UserPermissions(userID string) ([]string, error) {
 	var permissions []string
 	err := r.db.Table("permissions").
 		Distinct("permissions.name").
@@ -117,7 +140,7 @@ func (r *Repository) UserPermissions(userID uint) ([]string, error) {
 	return permissions, err
 }
 
-func (r *Repository) HasPermission(userID uint, permission string) (bool, error) {
+func (r *Repository) HasPermission(userID string, permission string) (bool, error) {
 	var count int64
 	err := r.db.Table("permissions").
 		Joins("JOIN role_permissions rp ON rp.permission_id = permissions.id").

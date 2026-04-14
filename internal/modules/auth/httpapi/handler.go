@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"auth-service/internal/modules/auth/model"
 	"auth-service/internal/modules/auth/repository"
 	"auth-service/internal/modules/auth/service"
+
 	"github.com/gorilla/mux"
 )
 
@@ -76,6 +78,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuthCookie(w, r, resp.Token, resp.ExpiresAt)
+	resp.Token = ""
+
 	httpx.SendSuccess(w, http.StatusOK, "login successful", resp)
 }
 
@@ -93,7 +98,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uid := httpx.UserIDFromContext(r.Context())
-	if uid == 0 {
+	if uid == "" {
 		httpx.SendError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -102,7 +107,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		httpx.SendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	
+
 	httpx.SendSuccess(w, http.StatusOK, "password changed successfully", nil)
 }
 
@@ -114,7 +119,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uid := httpx.UserIDFromContext(r.Context())
-	if uid == 0 {
+	if uid == "" {
 		httpx.SendError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -124,11 +129,12 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		httpx.SendError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	
+
 	httpx.SendSuccess(w, http.StatusOK, "user retrieved successfully", data)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	clearAuthCookie(w, r)
 	httpx.SendSuccess(w, http.StatusOK, "logout successful", nil)
 }
 
@@ -256,7 +262,7 @@ func (h *Handler) RemoveRole(w http.ResponseWriter, r *http.Request) {
 		httpx.SendError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	roleID, err := idParam(r, "roleId")
+	roleID, err := idParamUint(r, "roleId")
 	if err != nil {
 		httpx.SendError(w, http.StatusBadRequest, "invalid role id")
 		return
@@ -340,9 +346,18 @@ func (h *Handler) serviceFromRequest(r *http.Request) (*service.Service, string,
 	return service.New(repo, h.jwt), resolvedDomain, nil
 }
 
-func idParam(r *http.Request, key string) (uint, error) {
+func idParam(r *http.Request, key string) (string, error) {
 	v := mux.Vars(r)[key]
-	id, err := strconv.ParseUint(v, 10, 64)
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "", errors.New("missing id")
+	}
+	return v, nil
+}
+
+func idParamUint(r *http.Request, key string) (uint, error) {
+	v := mux.Vars(r)[key]
+	id, err := strconv.ParseUint(strings.TrimSpace(v), 10, 64)
 	if err != nil {
 		return 0, err
 	}

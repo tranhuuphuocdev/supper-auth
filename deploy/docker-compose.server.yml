@@ -1,0 +1,26 @@
+services:
+  auth-service:
+    image: tranhuuphuoc22/hthouse:auth-service-1.0
+    container_name: auth_service
+    restart: always
+    env_file:
+      - .env
+    environment:
+      PORT: "8080"
+      SERVICE_NAME: auth-service
+      LOG_DIR: /var/log/app
+      LOG_LEVEL: info
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_SSLMODE: disable
+    volumes:
+      - ./logs/auth-service:/var/log/app
+    networks:
+      - smsf-networks
+
+volumes:
+  postgres_data:
+
+networks:
+  smsf-networks:
+    external: true

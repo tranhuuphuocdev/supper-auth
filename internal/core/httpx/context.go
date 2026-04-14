@@ -20,13 +20,13 @@ func DomainFromContext(ctx context.Context) string {
 	return ""
 }
 
-func WithUserID(ctx context.Context, userID uint) context.Context {
+func WithUserID(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, ctxUserIDKey, userID)
 }
 
-func UserIDFromContext(ctx context.Context) uint {
-	if v, ok := ctx.Value(ctxUserIDKey).(uint); ok {
+func UserIDFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(ctxUserIDKey).(string); ok {
 		return v
 	}
-	return 0
+	return ""
 }

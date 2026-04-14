@@ -1,23 +1,4 @@
 services:
-  auth-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: auth-service
-    restart: always
-    env_file:
-      - .env
-    environment:
-      SERVICE_NAME: auth-service
-      LOG_DIR: /var/log/app
-      LOG_LEVEL: info
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./logs/auth-service:/var/log/app
-    networks:
-      - smsf-network
-
   loki:
     image: grafana/loki:3.0.0
     container_name: loki
@@ -25,10 +6,10 @@ services:
     ports:
       - "3100:3100"
     volumes:
-      - ./monitoring/loki-config.yml:/etc/loki/config.yml:ro
+      - ./loki-config.yml:/etc/loki/config.yml:ro
       - loki_data:/loki
     networks:
-      - smsf-network
+      - monitoring_network
 
   promtail:
     image: grafana/promtail:3.0.0
@@ -37,11 +18,11 @@ services:
     depends_on:
       - loki
     volumes:
-      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
-      - ./logs:/var/log/services:ro
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - ../logs:/var/log/services:ro
       - promtail_positions:/tmp
     networks:
-      - smsf-network
+      - monitoring_network
 
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -53,10 +34,10 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     networks:
-      - smsf-network
+      - monitoring_network
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
@@ -71,7 +52,7 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
     networks:
-      - smsf-network
+      - monitoring_network
 
   node-exporter:
     image: prom/node-exporter:v1.8.2
@@ -83,7 +64,7 @@ services:
     ports:
       - "9100:9100"
     networks:
-      - smsf-network
+      - monitoring_network
 
   pushgateway:
     image: prom/pushgateway:v1.10.0
@@ -91,7 +72,7 @@ services:
     ports:
       - "9091:9091"
     networks:
-      - smsf-network
+      - monitoring_network
 
   grafana:
     image: grafana/grafana:12.0.0
@@ -102,20 +83,19 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
     ports:
-      - "3099:3000"
+      - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
     networks:
-      - smsf-network
+      - monitoring_network
 
 volumes:
   loki_data:
   promtail_positions:
   grafana_data:
   prometheus_data:
-  smsf-db-data:
 
 networks:
-  smsf-network:
-    external: true
+  monitoring_network:
+    driver: bridge

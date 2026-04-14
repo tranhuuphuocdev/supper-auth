@@ -515,6 +515,57 @@ CREATE TABLE role_permissions (
 - [ ] API key authentication
 - [ ] Swagger/OpenAPI documentation
 
+## Observability Stack (Loki + Promtail + Grafana)
+
+This project includes a reusable observability pattern so other services can follow the same convention.
+
+### Service logging convention
+
+- App writes JSON logs to `logs/<service-name>/<service-name>.log`
+- Every log line includes:
+  - `service`: service name (`auth-service`)
+  - `log_type`: for filtering (`startup`, `http_access`, `http_error`, `panic`, ...)
+  - `level`: log level (`INFO`, `WARN`, `ERROR`)
+
+### Local all-in-one stack
+
+```bash
+docker compose up -d
+```
+
+This starts:
+
+- Auth service on `http://localhost:8080`
+- Loki on `http://localhost:3100`
+- Grafana on `http://localhost:3000` (`admin/admin`)
+- Promtail tailing logs from `./logs/*/*.log`
+
+### Shared monitoring stack for multiple services
+
+If you want Grafana/Loki/Promtail as a shared stack (not tied to one app compose):
+
+```bash
+cd monitoring
+docker compose -f docker-compose.monitoring.yml up -d
+```
+
+Then ensure each service writes logs to the host under:
+
+```text
+<workspace>/logs/<service-name>/<service-name>.log
+```
+
+Promtail will auto-detect new files in `logs/` and push to Loki.
+
+### Query examples in Grafana Explore
+
+- All logs from auth service:
+  - `{service="auth-service"}`
+- Only error requests:
+  - `{service="auth-service",log_type="http_error"}`
+- Only panic logs:
+  - `{service="auth-service",log_type="panic"}`
+
 ## License
 
 MIT

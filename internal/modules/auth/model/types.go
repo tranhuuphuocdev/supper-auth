@@ -3,15 +3,19 @@ package model
 import "time"
 
 type RegisterRequest struct {
-	Email     string `json:"email"`
-	Password  string `json:"password"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
+	Username     string  `json:"username"`
+	Email        *string `json:"email"`
+	Password     string  `json:"password"`
+	DisplayName  *string `json:"display_name"`
+	AvatarURL    *string `json:"avatar_url"`
+	AuthProvider string  `json:"auth_provider"`
+	GoogleSub    *string `json:"google_sub"`
+	TelegramChat *string `json:"telegram_chat"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Identifier string `json:"identifier"`
+	Password   string `json:"password"`
 }
 
 type ChangePasswordRequest struct {
@@ -24,9 +28,12 @@ type AssignRoleRequest struct {
 }
 
 type UpdateUserRequest struct {
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	IsActive  bool   `json:"is_active"`
+	DisplayName  *string `json:"display_name"`
+	AvatarURL    *string `json:"avatar_url"`
+	Email        *string `json:"email"`
+	TelegramChat *string `json:"telegram_chat"`
+	Role         *string `json:"role"`
+	IsDeleted    *bool   `json:"is_deleted"`
 }
 
 type LoginResponse struct {

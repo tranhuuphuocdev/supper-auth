@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -17,6 +18,14 @@ type DomainConfig struct {
 
 type Config struct {
 	Port            string
+	ServiceName     string
+	LogDir          string
+	LogLevel        string
+	MetricsEnabled  bool
+	PushGatewayURL  string
+	MetricsJob      string
+	MetricsInstance string
+	MetricsInterval time.Duration
 	JWTSecret       string
 	DBHost          string
 	DBPort          string
@@ -34,6 +43,14 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		Port:            getEnv("PORT", "8080"),
+		ServiceName:     getEnv("SERVICE_NAME", "auth-service"),
+		LogDir:          getEnv("LOG_DIR", "logs/auth-service"),
+		LogLevel:        getEnv("LOG_LEVEL", "info"),
+		MetricsEnabled:  getEnvBool("METRICS_ENABLED", true),
+		PushGatewayURL:  getEnv("PUSHGATEWAY_URL", "http://pushgateway:9091"),
+		MetricsJob:      getEnv("METRICS_JOB", "auth-service"),
+		MetricsInstance: getEnv("METRICS_INSTANCE", getEnv("HOSTNAME", "auth-service")),
+		MetricsInterval: getEnvDuration("METRICS_PUSH_INTERVAL", 15*time.Second),
 		JWTSecret:       getEnv("JWT_SECRET", "your-secret-key-change-in-production"),
 		DBHost:          getEnv("DB_HOST", "localhost"),
 		DBPort:          getEnv("DB_PORT", "5432"),
@@ -103,4 +120,28 @@ func getEnv(key, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch v {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+	return d
 }

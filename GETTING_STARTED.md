@@ -288,6 +288,30 @@ curl -X POST http://localhost:8080/api/v1/admin/roles \
 - [ ] Add audit logging
 - [ ] Review security best practices
 
+## Observability Quick Start
+
+The repository now includes Loki + Promtail + Grafana.
+
+1. Start stack:
+
+```bash
+docker compose up -d
+```
+
+2. Open Grafana:
+
+- URL: `http://localhost:3000`
+- User: `admin`
+- Password: `admin`
+
+3. Open Explore and query:
+
+```text
+{service="auth-service"}
+```
+
+Promtail tails files in `./logs/*/*.log` and pushes them to Loki.
+
 ---
 
 Happy coding! 🎉
